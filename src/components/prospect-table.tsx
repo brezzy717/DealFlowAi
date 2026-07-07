@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ScoredLead, Tier } from "@/lib/types";
 import { TierBadge, ScorePill } from "@/components/tier-badge";
 import { SourceTagChips } from "@/components/source-tag";
+import { ActionOutcome } from "@/components/action-outcome";
 import { ChevronDown, Mail, Phone, MapPin, ShieldCheck, ShieldAlert } from "lucide-react";
 
 const TIER_ORDER: Tier[] = ["platinum", "gold", "silver"];
@@ -205,15 +206,18 @@ function ProspectDetail({ lead }: { lead: ScoredLead }) {
           <Fact label="Sale window" value={lead.saleWindow} />
         </dl>
 
-        <div className="flex flex-wrap gap-2">
-          {["Action Outreach", "Send Email", "Move to Pipeline", "Open Deal Room"].map((a) => (
-            <button
-              key={a}
-              className="rounded-md border border-border bg-card px-3 py-1.5 text-[12px] text-ink-dim transition hover:border-accent/40 hover:text-ink"
-            >
-              {a}
-            </button>
-          ))}
+        <div className="space-y-2">
+          <ActionOutcome assignmentId={lead.assignmentId} />
+          <div className="flex flex-wrap gap-2">
+            {["Send Email", "Move to Pipeline", "Open Deal Room"].map((a) => (
+              <button
+                key={a}
+                className="rounded-md border border-border bg-card px-3 py-1.5 text-[12px] text-ink-dim transition hover:border-accent/40 hover:text-ink"
+              >
+                {a}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

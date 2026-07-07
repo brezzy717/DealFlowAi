@@ -25,6 +25,44 @@ export async function getLiveTenant(): Promise<{ tenantId: string; companyName: 
   return { tenantId: tu.tenant_id, companyName: t?.company_name ?? "Your brokerage" };
 }
 
+export interface LiveClient {
+  id: string;
+  name: string;
+  business: string;
+  email: string;
+  phone: string;
+  source: "converted" | "imported";
+  since: string;
+  status: "active_deal" | "closed" | "nurture";
+}
+
+/** Clients derived from this tenant's booked/in-pipeline assignments. */
+export async function getLiveClients(tenantId: string): Promise<LiveClient[] | null> {
+  const admin = supabaseAdmin();
+  const { data } = await admin
+    .from("lead_assignments")
+    .select("id, status, assigned_at, scored_leads(ui_payload)")
+    .eq("tenant_id", tenantId)
+    .in("status", ["meeting_scheduled", "in_pipeline"])
+    .order("assigned_at", { ascending: false });
+  if (!data?.length) return null;
+  return data.map((r) => {
+    const sl = Array.isArray(r.scored_leads) ? r.scored_leads[0] : r.scored_leads;
+    const p = sl?.ui_payload as { business?: { name?: string; owner?: { name?: string; email?: string; phone?: string } } } | undefined;
+    const b = p?.business;
+    return {
+      id: r.id,
+      name: b?.owner?.name ?? "Owner",
+      business: b?.name ?? "—",
+      email: b?.owner?.email ?? "",
+      phone: b?.owner?.phone ?? "",
+      source: "converted" as const,
+      since: r.assigned_at,
+      status: "active_deal" as const,
+    };
+  });
+}
+
 export interface LiveAppointment {
   id: string;
   startsAt: string;
