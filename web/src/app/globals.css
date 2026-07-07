@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@theme {
+  /* DealFlow AI — warm charcoal glass + burnt sienna (per dashboard idea pics).
+     Accent is one token: flip --color-accent* to teal (#22d3ee family) if the
+     copper ever stops feeling right. */
+  --color-bg: #0d0b0a;
+  --color-surface: #14110f;
+  --color-card: #1a1614;
+  --color-card-hover: #211b18;
+  --color-border: #2b241e;
+  --color-border-strong: #3d332a;
+
+  --color-ink: #ece7e1;
+  --color-ink-dim: #a89f94;
+  --color-ink-faint: #6d6359;
+
+  --color-accent: #c25e40;
+  --color-accent-bright: #e07b52;
+  --color-accent-soft: #2b1a13;
+
+  --color-teal: #2dd4bf;
+  --color-teal-soft: #0f2a26;
+
+  --color-platinum: #dcdfe6;
+  --color-gold: #d4a843;
+  --color-silver: #a49a8d;
+  --color-tierblack: #55493f;
+
+  --color-success: #2dd4bf;
+  --color-danger: #f87171;
+  --color-warning: #fbbf24;
+
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-barlow), var(--font-manrope), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-feature-settings: "cv02", "cv03", "tnum";
+}
+
+::selection {
+  background: var(--color-accent);
+  color: white;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+/* Glassy card treatment from the CyGlass mockup */
+.card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008) 45%), var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 0.85rem;
+  backdrop-filter: blur(12px);
+}
+
+/* Ambient warm glow layers behind the dashboard */
+.ambient::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 80% 45% at 50% -10%, rgba(194, 94, 64, 0.10), transparent 60%),
+    radial-gradient(ellipse 70% 40% at 85% 110%, rgba(45, 212, 191, 0.05), transparent 65%);
+  pointer-events: none;
+}
+
+/* Signals ticker marquee */
+@keyframes marqueeX {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.marquee {
+  animation: marqueeX 32s linear infinite;
+}
+.marquee:hover {
+  animation-play-state: paused;
+}
