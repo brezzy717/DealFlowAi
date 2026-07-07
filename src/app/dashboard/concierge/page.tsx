@@ -101,7 +101,7 @@ export default function ConciergePage() {
             ))}
           </ul>
           <p className="border-t border-border px-5 py-3 text-[12px] text-ink-faint">
-            Voice agent activates with <code className="font-mono">VAPI_API_KEY</code> (adapter in
+            Voice agent activates with <code className="font-mono">RETELL_API_KEY</code> (adapter in
             src/lib/outreach/voice.ts) · calls respect TCPA windows and DNC scrubbing
           </p>
         </section>

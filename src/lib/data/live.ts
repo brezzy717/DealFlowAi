@@ -7,6 +7,54 @@ import { LeadStatus, ScoredLead } from "@/lib/types";
  * isn't signed in, or the tenant has no assignments yet — callers fall back
  * to the synthetic demo book, so the app degrades gracefully everywhere.
  */
+export async function getLiveTenant(): Promise<{ tenantId: string; companyName: string } | null> {
+  if (!supabaseConfigured() || !adminConfigured()) return null;
+  const supa = await supabaseServer();
+  const {
+    data: { user },
+  } = await supa.auth.getUser();
+  if (!user) return null;
+  const admin = supabaseAdmin();
+  const { data: tu } = await admin
+    .from("tenant_users")
+    .select("tenant_id, tenants(company_name)")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+  if (!tu) return null;
+  const t = Array.isArray(tu.tenants) ? tu.tenants[0] : tu.tenants;
+  return { tenantId: tu.tenant_id, companyName: t?.company_name ?? "Your brokerage" };
+}
+
+export interface LiveAppointment {
+  id: string;
+  startsAt: string;
+  kind: string | null;
+  source: string | null;
+  status: string | null;
+  guestName: string | null;
+  guestCompany: string | null;
+}
+
+export async function getLiveAppointments(tenantId: string): Promise<LiveAppointment[]> {
+  const admin = supabaseAdmin();
+  const { data } = await admin
+    .from("appointments")
+    .select("id, starts_at, kind, source, status, guest_name, guest_company")
+    .eq("tenant_id", tenantId)
+    .neq("status", "cancelled")
+    .gte("starts_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+    .order("starts_at", { ascending: true });
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    startsAt: r.starts_at,
+    kind: r.kind,
+    source: r.source,
+    status: r.status,
+    guestName: r.guest_name,
+    guestCompany: r.guest_company,
+  }));
+}
+
 export async function getLiveBook(): Promise<ScoredLead[] | null> {
   if (!supabaseConfigured() || !adminConfigured()) return null;
 

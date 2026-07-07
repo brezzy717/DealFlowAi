@@ -1,5 +1,7 @@
 import { Topbar } from "@/components/topbar";
 import { getUpcomingAppointments } from "@/lib/data/store";
+import { getLiveTenant, getLiveAppointments } from "@/lib/data/live";
+import { BookingLinkButton } from "@/components/booking-link";
 import { CalendarPlus, Download, Link2 } from "lucide-react";
 
 const KIND: Record<string, string> = {
@@ -13,8 +15,19 @@ const SOURCE: Record<string, string> = {
   broker: "You",
 };
 
-export default function CalendarPage() {
-  const appts = getUpcomingAppointments();
+export default async function CalendarPage() {
+  const tenant = await getLiveTenant();
+  const liveAppts = tenant ? await getLiveAppointments(tenant.tenantId) : [];
+  const appts = liveAppts.length
+    ? liveAppts.map((a) => ({
+        id: a.id,
+        leadName: a.guestCompany ?? "—",
+        ownerName: a.guestName ?? "Guest",
+        when: a.startsAt,
+        kind: (a.kind ?? "discovery_call") as "discovery_call",
+        source: (a.source ?? "magic_link") as "magic_link",
+      }))
+    : getUpcomingAppointments();
   const start = new Date("2026-07-07");
   const days = Array.from({ length: 30 }, (_, i) => {
     const d = new Date(start);
@@ -31,14 +44,20 @@ export default function CalendarPage() {
           <button className="flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white hover:bg-accent-bright">
             <CalendarPlus className="h-4 w-4" /> New appointment
           </button>
-          <button className="flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-[13px] text-ink-dim hover:text-ink">
-            <Link2 className="h-4 w-4" /> My booking link
-          </button>
+          {tenant ? (
+            <BookingLinkButton tenantId={tenant.tenantId} />
+          ) : (
+            <button className="flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-[13px] text-ink-dim hover:text-ink">
+              <Link2 className="h-4 w-4" /> My booking link
+            </button>
+          )}
           <button className="flex items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-[13px] text-ink-dim hover:text-ink">
             <Download className="h-4 w-4" /> Export (.ics)
           </button>
           <p className="ml-auto text-[12px] text-ink-faint">
-            Cal.com booking + Google Calendar sync activate with <code className="font-mono">CALCOM_API_KEY</code>
+            {tenant
+              ? "Native scheduling — share your link anywhere; bookings land here and confirm by email"
+              : "Sign in to activate your personal booking page"}
           </p>
         </div>
 

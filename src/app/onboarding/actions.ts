@@ -2,6 +2,7 @@
 
 import { supabaseAdmin, adminConfigured } from "@/lib/supabase/admin";
 import { supabaseServer, supabaseConfigured } from "@/lib/supabase/server";
+import { DEFAULT_AVAILABILITY } from "@/lib/scheduling";
 
 export interface OnboardingPayload {
   tier: 1 | 2;
@@ -51,6 +52,11 @@ export async function completeOnboarding(payload: OnboardingPayload): Promise<{ 
       full_name: (user.user_metadata?.full_name as string) ?? null,
     });
     if (uErr) return { ok: false, error: uErr.message };
+
+    // Default booking availability: Mon–Fri 9–5 Phoenix (editable later in Settings)
+    await admin.from("broker_availability").insert(
+      DEFAULT_AVAILABILITY.map((w) => ({ tenant_id: tenantId, ...w })),
+    );
   }
 
   const geoParts = payload.geo.split(",").map((s) => s.trim()).filter(Boolean);

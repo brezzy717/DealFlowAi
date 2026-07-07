@@ -23,26 +23,25 @@ export async function startOutboundCall(opts: {
   script: string;
   leadContext: Record<string, string>;
 }): Promise<AdapterResult<{ callId: string }>> {
-  const key = process.env.VAPI_API_KEY;
+  const key = process.env.RETELL_API_KEY;
   if (!key) return { ok: false, reason: "not_configured" };
-  const res = await fetch("https://api.vapi.ai/call", {
+  // Requires a Retell agent + purchased number configured in the Retell
+  // dashboard (RETELL_AGENT_ID / RETELL_FROM_NUMBER). The agent prompt reads
+  // dynamic variables filled from the lead context + broker script.
+  const res = await fetch("https://api.retellai.com/v2/create-phone-call", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
-      customer: { number: opts.phone },
-      assistant: {
-        firstMessage: "Hi, may I speak with the owner?",
-        model: { provider: "anthropic", model: "claude-sonnet-5", messages: [{ role: "system", content: opts.script }] },
-        recordingEnabled: true,
-        transcriber: { provider: "deepgram" },
-      },
+      from_number: process.env.RETELL_FROM_NUMBER,
+      to_number: opts.phone,
+      override_agent_id: process.env.RETELL_AGENT_ID,
+      retell_llm_dynamic_variables: { ...opts.leadContext, broker_script: opts.script },
       metadata: opts.leadContext,
     }),
   });
   if (!res.ok) return { ok: false, reason: "error", detail: await res.text() };
   const data = await res.json();
-  return { ok: true, data: { callId: data.id } };
+  return { ok: true, data: { callId: data.call_id } };
 }
 
 export async function sendPostcard(opts: {
@@ -67,13 +66,8 @@ export async function sendPostcard(opts: {
   return { ok: true, data: await res.json() };
 }
 
-export async function createBookingLink(brokerEmail: string): Promise<AdapterResult<{ url: string }>> {
-  const key = process.env.CALCOM_API_KEY;
-  if (!key) return { ok: false, reason: "not_configured" };
-  // Cal.com platform API: fetch (or lazily create) the broker's managed user + event type
-  const res = await fetch("https://api.cal.com/v2/event-types", {
-    headers: { Authorization: `Bearer ${key}` },
-  });
-  if (!res.ok) return { ok: false, reason: "error", detail: await res.text() };
-  return { ok: true, data: { url: `https://cal.com/dealflow/${brokerEmail.split("@")[0]}/valuation` } };
+/** Native scheduling: every tenant gets /book/<tenantId> — no third-party service. */
+export function bookingLinkFor(tenantId: string): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? "https://dealflow.ai";
+  return `${base}/book/${tenantId}`;
 }
