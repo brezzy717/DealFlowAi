@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Check, Zap } from "lucide-react";
+import { completeOnboarding } from "./actions";
 
 const STEPS = ["Choose Tier", "Payment", "Lead Parameters", "AI Concierge Agreement", "Done"];
 
@@ -14,12 +15,22 @@ export default function OnboardingPage() {
   const [params, setParams] = useState({ geo: "", revMin: "", revMax: "", empMin: "", years: "", exclude: [] as string[] });
   const [signature, setSignature] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const canContinue =
-    step === 2 ? params.geo.trim().length > 0 : step === 3 ? agreed && signature.trim().length > 2 : true;
+    step === 2 ? params.geo.trim().length > 0 : step === 3 ? agreed && signature.trim().length > 2 && !saving : true;
 
-  const next = () => {
+  const next = async () => {
     if (step === 3) {
+      setSaving(true);
+      setError(null);
+      const res = await completeOnboarding({ tier, ...params, signature });
+      setSaving(false);
+      if (!res.ok) {
+        setError(res.error ?? "Could not save your onboarding — try again.");
+        return;
+      }
       localStorage.setItem(
         "df_onboarding",
         JSON.stringify({ tier, params, signature, signedAt: new Date().toISOString() }),
@@ -211,12 +222,13 @@ export default function OnboardingPage() {
         ) : null}
 
         {step < 4 ? (
-          <div className="mt-6 flex justify-between border-t border-border pt-5">
+          <div className="mt-6 flex items-center justify-between gap-3 border-t border-border pt-5">
+            {error ? <p className="order-2 flex-1 text-[12px] text-danger">{error}</p> : null}
             <button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} className="rounded-lg border border-border px-4 py-2 text-[13px] text-ink-dim disabled:opacity-40">
               Back
             </button>
             <button onClick={next} disabled={!canContinue} className="rounded-lg bg-accent px-5 py-2 text-[13px] font-medium text-white hover:bg-accent-bright disabled:opacity-40">
-              {step === 3 ? "Sign & finish" : "Continue"}
+              {step === 3 ? (saving ? "Saving…" : "Sign & finish") : "Continue"}
             </button>
           </div>
         ) : null}

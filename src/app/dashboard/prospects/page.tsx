@@ -1,16 +1,22 @@
 import { Topbar } from "@/components/topbar";
 import { ProspectTable } from "@/components/prospect-table";
 import { getBrokerBook } from "@/lib/data/store";
+import { getLiveBook } from "@/lib/data/live";
 import { Map } from "lucide-react";
 
-export default function ProspectsPage() {
-  const leads = getBrokerBook();
+export default async function ProspectsPage() {
+  const live = await getLiveBook();
+  const leads = live ?? getBrokerBook();
 
   return (
     <>
       <Topbar
         title="Prospects"
-        subtitle="Your distributed leads, grouped by tier. Click any row for the full signal breakdown."
+        subtitle={
+          live
+            ? "Live from your Supabase lead pool — grouped by tier. Click any row for the full signal breakdown."
+            : "Demo book (sign in + onboard to receive live assignments). Click any row for the signal breakdown."
+        }
       />
       <main className="space-y-6 px-8 py-6">
         {/* Map panel — Mapbox wires in once the token is set */}

@@ -17,11 +17,11 @@ export default function Home() {
           </span>
         </div>
         <nav className="flex items-center gap-3">
-          <Link href="/dashboard" className="rounded-lg px-4 py-2 text-[13px] text-ink-dim hover:text-ink">
+          <Link href="/login" className="rounded-lg px-4 py-2 text-[13px] text-ink-dim hover:text-ink">
             Sign in
           </Link>
           <Link
-            href="/dashboard"
+            href="/login"
             className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white transition hover:bg-accent-bright"
           >
             Get started
