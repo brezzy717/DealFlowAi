@@ -507,19 +507,33 @@ language sql stable as $$
   select tenant_id from tenant_users where auth_user_id = auth.uid() limit 1
 $$;
 
--- Same-shaped policy per tenant table
+-- Same-shaped policy for tables that carry tenant_id directly
 do $$
 declare t text;
 begin
   foreach t in array array[
-    'tenant_parameters','onboarding_progress','lead_assignments','outreach_feedback',
-    'meeting_feedback','deal_feedback','deals','clients','tasks','vault_documents',
-    'appointments','dealroom_threads','call_logs'
+    'tenant_parameters','lead_assignments','deals','clients','tasks',
+    'vault_documents','appointments','dealroom_threads','call_logs'
   ] loop
     execute format(
       'create policy tenant_isolation_%1$s on %1$s for all using (tenant_id = current_tenant_id()) with check (tenant_id = current_tenant_id())', t);
   end loop;
 end $$;
+
+-- onboarding_progress keys on tenant_id as its PK
+create policy tenant_isolation_onboarding on onboarding_progress for all
+  using (tenant_id = current_tenant_id()) with check (tenant_id = current_tenant_id());
+
+-- Feedback tables scope through their lead assignment
+create policy tenant_isolation_outreach_feedback on outreach_feedback for all
+  using (assignment_id in (select id from lead_assignments where tenant_id = current_tenant_id()))
+  with check (assignment_id in (select id from lead_assignments where tenant_id = current_tenant_id()));
+create policy tenant_isolation_meeting_feedback on meeting_feedback for all
+  using (assignment_id in (select id from lead_assignments where tenant_id = current_tenant_id()))
+  with check (assignment_id in (select id from lead_assignments where tenant_id = current_tenant_id()));
+create policy tenant_isolation_deal_feedback on deal_feedback for all
+  using (assignment_id in (select id from lead_assignments where tenant_id = current_tenant_id()))
+  with check (assignment_id in (select id from lead_assignments where tenant_id = current_tenant_id()));
 
 create policy tenant_self on tenants for select using (id = current_tenant_id());
 create policy tenant_users_self on tenant_users for select using (tenant_id = current_tenant_id());

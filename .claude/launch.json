@@ -5,7 +5,6 @@
       "name": "dealflow-web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "cwd": "web",
       "port": 3000
     }
   ]
