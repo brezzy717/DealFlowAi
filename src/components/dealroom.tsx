@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Client } from "@/lib/data/crm";
 import { Send, FileText, CheckCircle2, Circle, Paperclip } from "lucide-react";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import { openThread, sendMessage } from "@/app/dashboard/dealroom/actions";
 
 interface Msg {
   id: string;
@@ -25,22 +27,64 @@ const DOC_CHECKLIST = [
   { name: "Equipment list w/ values", done: false },
 ];
 
-export function DealRoom({ clients }: { clients: Client[] }) {
+export function DealRoom({ clients, live }: { clients: Client[]; live: boolean }) {
   const active = clients.filter((c) => c.status === "active_deal");
   const [selected, setSelected] = useState(0);
-  const [msgs, setMsgs] = useState<Msg[]>(SEED);
+  const [msgs, setMsgs] = useState<Msg[]>(live ? [] : SEED);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const roomKey = active[selected]?.business ?? active[selected]?.name ?? "room";
+
+  // Load thread history + subscribe to Supabase Realtime for the selected room
+  useEffect(() => {
+    if (!live || !active[selected]) return;
+    let channel: ReturnType<ReturnType<typeof supabaseBrowser>["channel"]> | null = null;
+    let cancelled = false;
+
+    (async () => {
+      const res = await openThread(roomKey);
+      if (cancelled || !res) return;
+      setThreadId(res.threadId);
+      setMsgs(res.messages.map((m) => ({ id: m.id, sender: m.sender, body: m.body, at: m.created_at })));
+
+      const supabase = supabaseBrowser();
+      channel = supabase
+        .channel(`dealroom:${res.threadId}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "dealroom_messages", filter: `thread_id=eq.${res.threadId}` },
+          (payload) => {
+            const m = payload.new as { id: string; sender: "broker" | "owner"; body: string; created_at: string };
+            setMsgs((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, { id: m.id, sender: m.sender, body: m.body, at: m.created_at }]));
+          },
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channel) supabaseBrowser().removeChannel(channel);
+    };
+  }, [live, roomKey, selected, active]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  const send = () => {
+  const send = useCallback(async () => {
     if (!draft.trim()) return;
-    setMsgs((m) => [...m, { id: `m_${Date.now()}`, sender: "broker", body: draft.trim(), at: new Date().toISOString() }]);
+    const body = draft.trim();
     setDraft("");
-  };
+    if (live && threadId) {
+      // Optimistic; the realtime INSERT will dedupe by id when it echoes back
+      setMsgs((m) => [...m, { id: `local_${Date.now()}`, sender: "broker", body, at: new Date().toISOString() }]);
+      await sendMessage(threadId, body);
+    } else {
+      setMsgs((m) => [...m, { id: `m_${Date.now()}`, sender: "broker", body, at: new Date().toISOString() }]);
+    }
+  }, [draft, live, threadId]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[240px_1fr_260px]">
