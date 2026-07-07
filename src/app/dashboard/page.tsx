@@ -5,13 +5,15 @@ import { SourceTagChips } from "@/components/source-tag";
 import { TierBadge, ScorePill } from "@/components/tier-badge";
 import {
   DEMO_KPIS,
-  getAvgScoreLatestDrop,
-  getHotLeadCount,
-  getLatestDrop,
-  getNeedsAction,
-  getTierCounts,
+  getBrokerBook,
   getUpcomingAppointments,
+  latestDropOf,
+  needsActionOf,
+  tierCountsOf,
+  avgScoreOf,
+  hotLeadCountOf,
 } from "@/lib/data/store";
+import { getLiveBook, getLiveTenant, getLiveAppointments } from "@/lib/data/live";
 import { DollarSign, TrendingUp, CalendarCheck2, Percent, AlertCircle, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
@@ -30,26 +32,50 @@ const APPT_SOURCE: Record<string, string> = {
   broker: "Booked by you",
 };
 
-export default function HomePage() {
-  const drop = getLatestDrop();
-  const needsAction = getNeedsAction().slice(0, 5);
-  const appointments = getUpcomingAppointments().slice(0, 5);
-  const tiers = getTierCounts();
+export default async function HomePage() {
+  const tenant = await getLiveTenant();
+  const live = await getLiveBook();
+  const book = live ?? getBrokerBook();
+
+  const drop = latestDropOf(book);
+  const needsAction = needsActionOf(book).slice(0, 5);
+  const tiers = tierCountsOf(book);
+  const avgScore = avgScoreOf(book);
+  const hotLeads = hotLeadCountOf(book);
+
+  const appointments = (
+    tenant
+      ? (await getLiveAppointments(tenant.tenantId)).slice(0, 5).map((a) => ({
+          id: a.id,
+          leadName: a.guestCompany ?? "—",
+          ownerName: a.guestName ?? "Guest",
+          when: a.startsAt,
+          kind: (a.kind ?? "discovery_call") as "discovery_call",
+          source: (a.source ?? "magic_link") as "magic_link",
+        }))
+      : getUpcomingAppointments().slice(0, 5)
+  );
+
+  const firstName = tenant ? tenant.companyName.split(" ")[0] : "Reshie";
 
   return (
     <>
       <Topbar
-        title="Good morning, Reshie"
-        subtitle={`This week's drop landed Tuesday 6:00 AM — ${drop.length} new prospects. Next drop: Tue, Jul 7.`}
+        title={`Welcome back, ${firstName}`}
+        subtitle={
+          live
+            ? `Your live book — ${book.length} active prospects, ${drop.length} in the latest drop.`
+            : `Demo book — ${drop.length} prospects. Sign in and onboard to receive live assignments.`
+        }
       />
       <main className="space-y-6 px-8 py-6">
         {/* Pipeline signals ticker — the at-a-glance value strip */}
         <SignalsTicker
           items={[
             { label: "New scored leads", value: `+${drop.length}` },
-            { label: "Hot (Platinum) leads", value: String(getHotLeadCount()) },
-            { label: "Appts today", value: "3", tone: "teal" },
-            { label: "Avg score this drop", value: String(getAvgScoreLatestDrop()) },
+            { label: "Hot (Platinum) leads", value: String(hotLeads) },
+            { label: "Appts booked", value: String(appointments.length), tone: "teal" },
+            { label: "Avg score this drop", value: String(avgScore) },
             { label: "YTD commissions", value: fmtMoney(DEMO_KPIS.ytdCommissions), tone: "teal" },
             { label: "Deals closed YTD", value: String(DEMO_KPIS.dealsClosedYtd), tone: "teal" },
             { label: "Win rate", value: `${Math.round(DEMO_KPIS.closeRate * 100)}%` },
@@ -114,7 +140,7 @@ export default function HomePage() {
                 <AlertCircle className="h-4 w-4 text-warning" />
                 <h2 className="text-[15px] font-semibold">Needs Action</h2>
                 <span className="ml-auto rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
-                  {getNeedsAction().length}
+                  {needsActionOf(book).length}
                 </span>
               </div>
               <ul className="divide-y divide-border">

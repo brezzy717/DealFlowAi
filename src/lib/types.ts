@@ -204,4 +204,6 @@ export interface ScoredLead {
   status: LeadStatus;
   /** Which weekly drop this lead arrived in (0 = this week) */
   dropWeeksAgo: number;
+  /** Present when this lead came from a live assignment (enables feedback actions) */
+  assignmentId?: string;
 }

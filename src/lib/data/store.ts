@@ -52,10 +52,29 @@ export function getBrokerBook(): ScoredLead[] {
   return getScoredLeads().filter((l) => l.dropWeeksAgo >= 0);
 }
 
+// ── Pure derivations (work on any book — synthetic or live) ──────────────
+export function latestDropOf(book: ScoredLead[]): ScoredLead[] {
+  const thisWeek = book.filter((l) => l.dropWeeksAgo === 0);
+  return (thisWeek.length ? thisWeek : book).sort((a, z) => z.score - a.score);
+}
+export function needsActionOf(book: ScoredLead[]): ScoredLead[] {
+  return book.filter((l) => l.status === "needs_action" || l.status === "new");
+}
+export function tierCountsOf(book: ScoredLead[]): Record<Tier, number> {
+  const counts: Record<Tier, number> = { platinum: 0, gold: 0, silver: 0, black: 0 };
+  for (const l of book) counts[l.tier]++;
+  return counts;
+}
+export function avgScoreOf(book: ScoredLead[]): number {
+  const drop = latestDropOf(book);
+  return drop.length ? Math.round(drop.reduce((a, l) => a + l.score, 0) / drop.length) : 0;
+}
+export function hotLeadCountOf(book: ScoredLead[]): number {
+  return book.filter((l) => l.tier === "platinum" && l.status !== "in_pipeline").length;
+}
+
 export function getLatestDrop(): ScoredLead[] {
-  return getBrokerBook()
-    .filter((l) => l.dropWeeksAgo === 0)
-    .sort((a, z) => z.score - a.score);
+  return latestDropOf(getBrokerBook());
 }
 
 export function getNeedsAction(): ScoredLead[] {
@@ -63,9 +82,7 @@ export function getNeedsAction(): ScoredLead[] {
 }
 
 export function getTierCounts(): Record<Tier, number> {
-  const counts: Record<Tier, number> = { platinum: 0, gold: 0, silver: 0, black: 0 };
-  for (const l of getBrokerBook()) counts[l.tier]++;
-  return counts;
+  return tierCountsOf(getBrokerBook());
 }
 
 export interface Appointment {

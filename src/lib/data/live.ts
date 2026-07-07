@@ -70,7 +70,7 @@ export async function getLiveBook(): Promise<ScoredLead[] | null> {
 
   const { data: rows, error } = await admin
     .from("lead_assignments")
-    .select("status, drop_date, assigned_at, scored_leads(ui_payload, final_score, tier)")
+    .select("id, status, drop_date, assigned_at, scored_leads(ui_payload, final_score, tier)")
     .eq("tenant_id", tu.tenant_id)
     .not("status", "in", "(clawed_back,dnc)")
     .order("assigned_at", { ascending: false });
@@ -83,7 +83,7 @@ export async function getLiveBook(): Promise<ScoredLead[] | null> {
     const payload = sl?.ui_payload as Omit<ScoredLead, "status" | "dropWeeksAgo"> | undefined;
     if (!payload) continue;
     const weeks = Math.max(0, Math.floor((now - new Date(r.drop_date).getTime()) / (7 * 24 * 3600 * 1000)));
-    leads.push({ ...payload, status: r.status as LeadStatus, dropWeeksAgo: weeks });
+    leads.push({ ...payload, status: r.status as LeadStatus, dropWeeksAgo: weeks, assignmentId: r.id });
   }
   return leads.length ? leads : null;
 }

@@ -3,6 +3,7 @@
 import { supabaseAdmin, adminConfigured } from "@/lib/supabase/admin";
 import { supabaseServer, supabaseConfigured } from "@/lib/supabase/server";
 import { DEFAULT_AVAILABILITY } from "@/lib/scheduling";
+import { distributeToTenant, sendWarmEmail } from "@/lib/distribution";
 
 export interface OnboardingPayload {
   tier: 1 | 2;
@@ -84,25 +85,8 @@ export async function completeOnboarding(payload: OnboardingPayload): Promise<{ 
     onboarding_complete: true,
   });
 
-  await distributeLeads(tenantId!, 5);
+  // First batch: distribute matching leads, then fire the Day-1 warm emails
+  const dist = await distributeToTenant(tenantId!, 5);
+  await Promise.all(dist.assignmentIds.map((id) => sendWarmEmail(id)));
   return { ok: true };
-}
-
-/** Assign the top N unassigned leads per tier to a tenant (the weekly-drop core). */
-async function distributeLeads(tenantId: string, perTier: number) {
-  const admin = supabaseAdmin();
-  const today = new Date().toISOString().slice(0, 10);
-  for (const tier of ["platinum", "gold", "silver"]) {
-    const { data: leads } = await admin
-      .from("scored_leads")
-      .select("id, lead_assignments!left(id)")
-      .eq("tier", tier)
-      .is("lead_assignments", null) // anti-join: only leads with no assignment
-      .order("final_score", { ascending: false })
-      .limit(perTier);
-    if (!leads?.length) continue;
-    await admin.from("lead_assignments").insert(
-      leads.map((l) => ({ scored_lead_id: l.id, tenant_id: tenantId, drop_date: today, status: "new" })),
-    );
-  }
 }
