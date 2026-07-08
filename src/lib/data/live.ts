@@ -25,6 +25,51 @@ export async function getLiveTenant(): Promise<{ tenantId: string; companyName: 
   return { tenantId: tu.tenant_id, companyName: t?.company_name ?? "Your brokerage" };
 }
 
+export interface LiveTenantRow {
+  id: string;
+  broker: string;
+  company: string;
+  email: string;
+  tier: 1 | 2;
+  status: "active" | "past_due" | "churned";
+  leadsAssigned: number;
+  contactedPct: number;
+  mrr: number;
+  joined: string;
+  lastActive: string;
+}
+
+/** All tenants with real assignment/contact counts — for the admin dashboard. */
+export async function getLiveTenants(): Promise<LiveTenantRow[] | null> {
+  if (!adminConfigured()) return null;
+  const admin = supabaseAdmin();
+  const [{ data: tenants }, { data: assignments }, { data: users }] = await Promise.all([
+    admin.from("tenants").select("id, company_name, tier, status, created_at, updated_at"),
+    admin.from("lead_assignments").select("tenant_id, first_contact_at"),
+    admin.from("tenant_users").select("tenant_id, email, full_name"),
+  ]);
+  if (!tenants?.length) return null;
+
+  return tenants.map((t) => {
+    const rows = (assignments ?? []).filter((a) => a.tenant_id === t.id);
+    const contacted = rows.filter((a) => a.first_contact_at).length;
+    const u = (users ?? []).find((x) => x.tenant_id === t.id);
+    return {
+      id: t.id,
+      broker: u?.full_name || u?.email || "—",
+      company: t.company_name,
+      email: u?.email ?? "",
+      tier: (t.tier ?? 1) as 1 | 2,
+      status: (t.status ?? "active") as "active",
+      leadsAssigned: rows.length,
+      contactedPct: rows.length ? Math.round((contacted / rows.length) * 100) : 0,
+      mrr: t.tier === 2 ? 5500 : 2400,
+      joined: t.created_at,
+      lastActive: t.updated_at,
+    };
+  });
+}
+
 export interface LiveClient {
   id: string;
   name: string;

@@ -10,17 +10,34 @@ const STATUS_CLS: Record<Tenant["status"], string> = {
   churned: "bg-danger/10 text-danger ring-danger/25",
 };
 
-export function AdminTenants({ tenants }: { tenants: Tenant[] }) {
+export function AdminTenants({ tenants, live = false }: { tenants: Tenant[]; live?: boolean }) {
   const [clawback, setClawback] = useState<Tenant | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const confirmClawback = () => {
+  const confirmClawback = async () => {
     if (!clawback) return;
-    setToast(
-      `Clawback executed for ${clawback.company}: uncontacted leads returned to the color pool for the next Tuesday drop. Audit row written.`,
-    );
+    const target = clawback;
     setClawback(null);
-    setTimeout(() => setToast(null), 6000);
+    if (live) {
+      try {
+        const res = await fetch("/api/admin/clawback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tenantId: target.id }),
+        });
+        const data = await res.json();
+        setToast(
+          res.ok
+            ? `Clawback executed for ${target.company}: ${data.clawedBack} uncontacted lead(s) returned to the color pool. Audit rows written.`
+            : `Clawback failed: ${data.error}`,
+        );
+      } catch {
+        setToast("Clawback failed — network error.");
+      }
+    } else {
+      setToast(`(Demo) Clawback for ${target.company}: uncontacted leads would return to the pool with audit rows.`);
+    }
+    setTimeout(() => setToast(null), 7000);
   };
 
   return (

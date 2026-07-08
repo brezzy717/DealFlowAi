@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { warmIntroEmail } from "@/lib/outreach/email-templates";
 import { sendEmail, bookingLinkFor } from "@/lib/outreach/adapters";
+import { applyMetaExplanations } from "@/lib/scoring/meta-explain";
 
 /**
  * Lead distribution — the core of the Tuesday 6 AM drop and onboarding's
@@ -57,6 +58,7 @@ export interface DistributionResult {
   assigned: number;
   byTier: Record<string, number>;
   assignmentIds: string[];
+  leadIds: string[];
 }
 
 /** Assign up to `perTier` fresh leads per tier to one tenant. */
@@ -70,7 +72,7 @@ export async function distributeToTenant(tenantId: string, perTier = 5): Promise
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
-  const result: DistributionResult = { tenantId, assigned: 0, byTier: {}, assignmentIds: [] };
+  const result: DistributionResult = { tenantId, assigned: 0, byTier: {}, assignmentIds: [], leadIds: [] };
 
   for (const tier of ["platinum", "gold", "silver"]) {
     // Pull a candidate window (over-fetch, filter in app, take perTier).
@@ -104,7 +106,21 @@ export async function distributeToTenant(tenantId: string, perTier = 5): Promise
     result.assigned += inserted.length;
     result.byTier[tier] = inserted.length;
     result.assignmentIds.push(...inserted.map((r) => r.id));
+    result.leadIds.push(...chosen);
   }
+
+  // Meta Model: generate broker-facing natural-language explanations for the
+  // leads being disbursed (spec Part 6). Template explanation stays as fallback.
+  await applyMetaExplanations(result.leadIds);
+
+  // Disbursement audit stamp
+  await admin.from("audit_log").insert({
+    action: "lead_distribution",
+    target_type: "tenant",
+    target_id: tenantId,
+    detail: { drop_date: today, assigned: result.assigned, by_tier: result.byTier },
+  });
+
   return result;
 }
 

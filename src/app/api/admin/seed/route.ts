@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const idMap = new Map(bizRows.map((r) => [r.pdl_company_id, r.id]));
     const scored = chunk.map((b) => ({ b, s: scoreBusiness(b, now) }));
 
-    const { error: leadErr } = await admin.from("scored_leads").upsert(
+    const { data: leadRows, error: leadErr } = await admin.from("scored_leads").upsert(
       scored.map(({ b, s }) => ({
         business_id: idMap.get(b.id),
         final_score: s.score,
@@ -71,8 +71,22 @@ export async function POST(req: NextRequest) {
         ui_payload: { ...s, scoredAt: now.toISOString() },
       })),
       { onConflict: "business_id" },
-    );
+    ).select("id, business_id, final_score, tier");
     if (leadErr) return NextResponse.json({ error: leadErr.message, at: "scored_leads" }, { status: 500 });
+
+    // Timestamp every scoring event (spec: audit trail of all scores)
+    if (leadRows?.length) {
+      await admin.from("scoring_events").insert(
+        leadRows.map((r) => ({
+          business_id: r.business_id,
+          scored_lead_id: r.id,
+          event_type: "initial_score",
+          trigger_reason: "bulk_seed",
+          new_score: r.final_score,
+          new_tier: r.tier,
+        })),
+      );
+    }
     inserted += chunk.length;
   }
 

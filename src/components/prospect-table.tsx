@@ -17,7 +17,7 @@ const STATUS_LABEL: Record<string, string> = {
   in_pipeline: "In pipeline",
 };
 
-export function ProspectTable({ leads }: { leads: ScoredLead[] }) {
+export function ProspectTable({ leads, internals = false }: { leads: ScoredLead[]; internals?: boolean }) {
   const [filter, setFilter] = useState<Tier | "all">("all");
   const [open, setOpen] = useState<string | null>(null);
 
@@ -88,7 +88,7 @@ export function ProspectTable({ leads }: { leads: ScoredLead[] }) {
                       <ChevronDown className={`h-4 w-4 text-ink-faint transition-transform ${isOpen ? "rotate-180" : ""}`} />
                     </button>
 
-                    {isOpen ? <ProspectDetail lead={lead} /> : null}
+                    {isOpen ? <ProspectDetail lead={lead} internals={internals} /> : null}
                   </li>
                 );
               })}
@@ -100,79 +100,93 @@ export function ProspectTable({ leads }: { leads: ScoredLead[] }) {
   );
 }
 
-function ProspectDetail({ lead }: { lead: ScoredLead }) {
+/**
+ * Broker-facing detail. PROPRIETARY GUARD: weights, point values, category
+ * caps, stacking math, and data-source names are trade secrets — brokers see
+ * the natural-language explanation and plain-English signal descriptions only.
+ * Pass internals={true} ONLY in admin contexts.
+ */
+function ProspectDetail({ lead, internals = false }: { lead: ScoredLead; internals?: boolean }) {
   const b = lead.business;
   return (
     <div className="grid gap-6 border-t border-border bg-surface/60 px-5 py-5 lg:grid-cols-[1.2fr_1fr]">
       <div className="space-y-4">
-        {/* Why this score */}
+        {/* Why this lead */}
         <div>
-          <h4 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">Why this lead scored {lead.score}</h4>
+          <h4 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">
+            Why this is a {lead.tier} lead
+          </h4>
           <p className="mt-1.5 text-[13px] leading-relaxed text-ink-dim">{lead.explanation}</p>
         </div>
 
-        {/* Top signals */}
+        {/* Key signals — plain English, no weights or sources */}
         <div>
-          <h4 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">Top signals</h4>
+          <h4 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">What we&apos;re seeing</h4>
           <ul className="mt-2 space-y-1.5">
             {lead.topSignals.map((s) => (
-              <li key={`${s.id}-${s.detail}`} className="flex items-baseline justify-between gap-3 text-[13px]">
+              <li key={`${s.id}-${s.detail}`} className="flex items-baseline gap-2.5 text-[13px]">
+                <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-accent" />
                 <span className="text-ink-dim">
                   {s.detail}
-                  <span className="ml-2 text-[11px] text-ink-faint">{s.source}</span>
+                  {internals ? (
+                    <span className="ml-2 font-mono text-[11px] text-accent-bright">
+                      +{s.points.toFixed(1)} · {s.source}
+                    </span>
+                  ) : null}
                 </span>
-                <span className="shrink-0 font-mono text-[12px] text-accent-bright">+{s.points.toFixed(1)}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        {/* Compound interactions */}
-        {lead.interactions.length > 0 ? (
-          <div>
-            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">Compound interactions</h4>
-            <ul className="mt-2 space-y-1.5">
-              {lead.interactions.map((ix) => (
-                <li key={ix.name} className="flex items-baseline justify-between gap-3 text-[13px]">
-                  <span className="text-ink-dim">
-                    <span className="font-medium text-accent-bright">{ix.name}</span> — {ix.detail}
-                  </span>
-                  <span className="shrink-0 font-mono text-[12px] text-accent-bright">+{ix.points}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {/* Category bars */}
-        <div>
-          <h4 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">Signal categories</h4>
-          <div className="mt-2 space-y-1.5">
-            {lead.categories
-              .filter((c) => c.points > 0)
-              .map((c) => (
-                <div key={c.id} className="flex items-center gap-3">
-                  <span className="w-44 shrink-0 text-[12px] text-ink-dim">{c.label}</span>
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
-                    <div
-                      className="h-full rounded-full bg-accent"
-                      style={{ width: `${Math.min(100, (c.points / c.cap) * 100)}%` }}
-                    />
-                  </div>
-                  <span className="w-14 shrink-0 text-right font-mono text-[11px] text-ink-faint">
-                    {c.points}/{c.cap}
-                  </span>
-                </div>
-              ))}
-          </div>
-          <p className="mt-2 text-[11px] text-ink-faint">
-            (Base {lead.baseScore}
-            {lead.interactions.length > 0
-              ? ` + ${Math.min(9, lead.interactions.reduce((a, i) => a + i.points, 0))} compound`
-              : ""}
-            ) × {lead.stackMultiplier.toFixed(2)} stacking = {lead.score} · Data confidence {(lead.confidence * 100).toFixed(0)}%
+        {internals ? (
+          <>
+            {lead.interactions.length > 0 ? (
+              <div>
+                <h4 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">Compound interactions (internal)</h4>
+                <ul className="mt-2 space-y-1.5">
+                  {lead.interactions.map((ix) => (
+                    <li key={ix.name} className="flex items-baseline justify-between gap-3 text-[13px]">
+                      <span className="text-ink-dim">
+                        <span className="font-medium text-accent-bright">{ix.name}</span> — {ix.detail}
+                      </span>
+                      <span className="shrink-0 font-mono text-[12px] text-accent-bright">+{ix.points}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <div>
+              <h4 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">Signal categories (internal)</h4>
+              <div className="mt-2 space-y-1.5">
+                {lead.categories
+                  .filter((c) => c.points > 0)
+                  .map((c) => (
+                    <div key={c.id} className="flex items-center gap-3">
+                      <span className="w-44 shrink-0 text-[12px] text-ink-dim">{c.label}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                        <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, (c.points / c.cap) * 100)}%` }} />
+                      </div>
+                      <span className="w-14 shrink-0 text-right font-mono text-[11px] text-ink-faint">
+                        {c.points}/{c.cap}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+              <p className="mt-2 text-[11px] text-ink-faint">
+                (Base {lead.baseScore}
+                {lead.interactions.length > 0 ? ` + ${Math.min(9, lead.interactions.reduce((a, i) => a + i.points, 0))} compound` : ""}
+                ) × {lead.stackMultiplier.toFixed(2)} stacking = {lead.score} · Data confidence {(lead.confidence * 100).toFixed(0)}%
+              </p>
+            </div>
+          </>
+        ) : (
+          <p className="text-[11px] text-ink-faint">
+            Estimated sale window: {lead.saleWindow} · Contact{" "}
+            {b.owner.contactVerified ? "verified" : "verification in progress"} · Scored{" "}
+            {new Date(lead.scoredAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
           </p>
-        </div>
+        )}
       </div>
 
       {/* Contact + business facts */}

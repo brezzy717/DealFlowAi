@@ -4,6 +4,7 @@ import { KpiCard } from "@/components/kpi-card";
 import { BarChart } from "@/components/charts";
 import { ADMIN_KPIS, SOURCE_FRESHNESS, getTenants } from "@/lib/data/crm";
 import { getScoredLeads } from "@/lib/data/store";
+import { getLiveTenants } from "@/lib/data/live";
 import { Users, DollarSign, Send, Target, ShieldCheck, ArrowLeft } from "lucide-react";
 
 const FRESH_CLS: Record<string, string> = {
@@ -12,8 +13,9 @@ const FRESH_CLS: Record<string, string> = {
   stale: "bg-danger/10 text-danger ring-danger/25",
 };
 
-export default function AdminPage() {
-  const tenants = getTenants();
+export default async function AdminPage() {
+  const liveTenants = await getLiveTenants();
+  const tenants = liveTenants ?? getTenants();
   // Score distribution histogram for drift monitoring
   const all = getScoredLeads();
   const buckets = Array.from({ length: 10 }, (_, i) => ({
@@ -101,7 +103,7 @@ export default function AdminPage() {
           </section>
         </div>
 
-        <AdminTenants tenants={tenants} />
+        <AdminTenants tenants={tenants} live={Boolean(liveTenants)} />
       </main>
     </div>
   );
