@@ -9,7 +9,7 @@ Snapshot of what's live, what's demo-mode, and what's left. Updated 2026-07-07.
 - **Resend**: verified domain updates.dealflowtech.io (emails reach real addresses)
 - **Anthropic**: Ava live
 - **Inngest**: connected to Vercel (crons run on deploy sync)
-- **Retell**: number +16029054435 wired; agent config in progress (needs RETELL_AGENT_ID)
+- **Retell**: number + agent id + LLM id wired into cadence w/ call_logs — BLOCKED: API key rejected by Retell (need the full key, starts with key_)
 
 ## Working end-to-end (verified against live DB)
 | Flow | Status |
@@ -27,6 +27,11 @@ Snapshot of what's live, what's demo-mode, and what's left. Updated 2026-07-07.
 | Ava assistant (Claude) | ✅ live |
 | Prospects / Home / Calendar read live book | ✅ live |
 | Lead pool seeded (240 scored businesses) | ✅ done |
+| Mapbox prospect map (tier-colored pins + popups) | ✅ live |
+| Stripe Checkout in onboarding (setup fee + subscription, sandbox) | ✅ live, verified |
+| Meta Model (Claude) explanations at disbursement | ✅ live, verified |
+| Real clawback + audit trail | ✅ live, verified |
+| Proprietary lockdown on broker lead cards | ✅ done |
 
 ## Demo-mode (works, not yet wired to live tables)
 - Pipeline (Kanban) — drag/drop persists to localStorage; needs deals-table persistence
@@ -41,9 +46,7 @@ Snapshot of what's live, what's demo-mode, and what's left. Updated 2026-07-07.
 - Real data ingestion (Dewey/UniCourt/ATTOM/D&B/Google/scrapers) — Phase 4
 - ML ensemble training (service skeleton exists; needs labels + hosting)
 - USPS postcards (Lob adapter ready; needs LOB_API_KEY)
-- Mapbox prospect map (graceful placeholder; needs NEXT_PUBLIC_MAPBOX_TOKEN)
 - Google Calendar sync option
-- Stripe live checkout (onboarding uses a stand-in form)
 
 ## Test account
 demo@dealflow.ai / DealflowDemo!2026 (Demo Brokerage, Tier 2, live assignments)

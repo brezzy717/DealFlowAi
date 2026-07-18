@@ -1,9 +1,29 @@
 "use server";
 
+import Stripe from "stripe";
 import { supabaseAdmin, adminConfigured } from "@/lib/supabase/admin";
 import { supabaseServer, supabaseConfigured } from "@/lib/supabase/server";
 import { DEFAULT_AVAILABILITY } from "@/lib/scheduling";
 import { distributeToTenant, sendWarmEmail } from "@/lib/distribution";
+
+/** Verify a returning Checkout session server-side (webhook-independent). */
+export async function verifyCheckout(
+  sessionId: string,
+): Promise<{ paid: boolean; customerId?: string; subscriptionId?: string }> {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key || !sessionId) return { paid: false };
+  try {
+    const stripe = new Stripe(key);
+    const s = await stripe.checkout.sessions.retrieve(sessionId);
+    return {
+      paid: s.payment_status === "paid",
+      customerId: (s.customer as string) ?? undefined,
+      subscriptionId: (s.subscription as string) ?? undefined,
+    };
+  } catch {
+    return { paid: false };
+  }
+}
 
 export interface OnboardingPayload {
   tier: 1 | 2;
@@ -14,6 +34,8 @@ export interface OnboardingPayload {
   years: string;
   exclude: string[];
   signature: string;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
 }
 
 /**
@@ -40,7 +62,13 @@ export async function completeOnboarding(payload: OnboardingPayload): Promise<{ 
     const companyName = (user.user_metadata?.company_name as string) || user.email?.split("@")[0] || "New Brokerage";
     const { data: tenant, error: tErr } = await admin
       .from("tenants")
-      .insert({ company_name: companyName, tier: payload.tier, ai_calling_concierge_enabled: payload.tier === 2 })
+      .insert({
+        company_name: companyName,
+        tier: payload.tier,
+        ai_calling_concierge_enabled: payload.tier === 2,
+        stripe_customer_id: payload.stripeCustomerId ?? null,
+        stripe_subscription_id: payload.stripeSubscriptionId ?? null,
+      })
       .select("id")
       .single();
     if (tErr) return { ok: false, error: tErr.message };

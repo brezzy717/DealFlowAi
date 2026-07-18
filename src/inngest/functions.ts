@@ -1,6 +1,7 @@
 import { inngest } from "./client";
 import { supabaseAdmin, adminConfigured } from "@/lib/supabase/admin";
 import { distributeToTenant, sendWarmEmail } from "@/lib/distribution";
+import { startOutboundCall } from "@/lib/outreach/adapters";
 
 /**
  * Live workflows against Supabase. Deploy via the Inngest Vercel integration
@@ -56,9 +57,41 @@ export const outreachCadence = inngest.createFunction(
     for (const [i, gap] of (["0h", "48h", "48h"] as const).entries()) {
       if (gap !== "0h") await step.sleep(`gap-${i}`, gap);
       const done = await step.run(`call-day-${3 + i * 2}`, async () => {
-        const { data } = await admin.from("lead_assignments").select("status").eq("id", assignmentId).maybeSingle();
-        return data?.status === "meeting_scheduled" || data?.status === "dnc";
-        // else: voice.startOutboundCall(...) → outcome → outreach_feedback + ml_training_data
+        const { data } = await admin
+          .from("lead_assignments")
+          .select("status, scored_leads(ui_payload), tenants(company_name)")
+          .eq("id", assignmentId)
+          .maybeSingle();
+        if (!data || data.status === "meeting_scheduled" || data.status === "dnc") return true;
+
+        const sl = Array.isArray(data.scored_leads) ? data.scored_leads[0] : data.scored_leads;
+        const t = Array.isArray(data.tenants) ? data.tenants[0] : data.tenants;
+        const payload = sl?.ui_payload as
+          | { business?: { name?: string; industry?: string; owner?: { name?: string; phone?: string } } }
+          | undefined;
+        const phone = payload?.business?.owner?.phone;
+        if (!phone) return false;
+
+        // TCPA window is enforced by cron timing (10am–6pm local scheduling)
+        const call = await startOutboundCall({
+          phone,
+          script: "", // Retell agent's own prompt + dynamic variables drive the call
+          leadContext: {
+            owner_first_name: payload?.business?.owner?.name?.split(" ")[0] ?? "there",
+            business_name: payload?.business?.name ?? "",
+            industry: payload?.business?.industry ?? "",
+            broker_name: t?.company_name ?? "your broker",
+          },
+        });
+        await admin.from("call_logs").insert({
+          tenant_id: tenantId,
+          assignment_id: assignmentId,
+          called_at: new Date().toISOString(),
+          attempt: i + 1,
+          outcome: call.ok ? "pending_action" : "no_answer",
+          transcript: call.ok ? null : `call not placed: ${call.reason}`,
+        });
+        return false;
       });
       if (done) return { done: "resolved during calls" };
     }

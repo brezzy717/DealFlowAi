@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Zap } from "lucide-react";
-import { completeOnboarding } from "./actions";
+import { completeOnboarding, verifyCheckout } from "./actions";
 
 const STEPS = ["Choose Tier", "Payment", "Lead Parameters", "AI Concierge Agreement", "Done"];
 
@@ -17,6 +17,41 @@ export default function OnboardingPage() {
   const [agreed, setAgreed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stripeInfo, setStripeInfo] = useState<{ customerId?: string; subscriptionId?: string } | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
+
+  // Returning from Stripe Checkout: verify the session, then advance to parameters
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const cs = q.get("cs");
+    if (q.get("paid") === "1" && cs) {
+      verifyCheckout(cs).then((r) => {
+        if (r.paid) {
+          setStripeInfo({ customerId: r.customerId, subscriptionId: r.subscriptionId });
+          setStep(2);
+          window.history.replaceState(null, "", "/onboarding");
+        }
+      });
+    }
+  }, []);
+
+  const startCheckout = async () => {
+    setPayBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Checkout unavailable");
+      window.location.href = data.url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Checkout failed");
+      setPayBusy(false);
+    }
+  };
 
   const canContinue =
     step === 2 ? params.geo.trim().length > 0 : step === 3 ? agreed && signature.trim().length > 2 && !saving : true;
@@ -25,7 +60,7 @@ export default function OnboardingPage() {
     if (step === 3) {
       setSaving(true);
       setError(null);
-      const res = await completeOnboarding({ tier, ...params, signature });
+      const res = await completeOnboarding({ tier, ...params, signature, ...stripeInfo });
       setSaving(false);
       if (!res.ok) {
         setError(res.error ?? "Could not save your onboarding — try again.");
@@ -101,16 +136,26 @@ export default function OnboardingPage() {
               Tier {tier} — {tier === 2 ? "$8,500 setup + $5,500/mo" : "$6,500 setup + $2,400/mo"}. Billing cycle starts
               today and runs 30 days. Invoice option available (reminder 5 days before due).
             </p>
-            <div className="mt-5 space-y-3 rounded-xl border border-dashed border-border-strong bg-surface p-5">
-              <input placeholder="Card number" className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-[13px] outline-none placeholder:text-ink-faint" />
-              <div className="grid grid-cols-2 gap-3">
-                <input placeholder="MM / YY" className="rounded-lg border border-border bg-card px-3 py-2.5 text-[13px] outline-none placeholder:text-ink-faint" />
-                <input placeholder="CVC" className="rounded-lg border border-border bg-card px-3 py-2.5 text-[13px] outline-none placeholder:text-ink-faint" />
-              </div>
-              <p className="text-[11px] text-ink-faint">
-                Stripe Checkout takes over this step when <code className="font-mono">STRIPE_SECRET_KEY</code> is configured —
-                this form is a stand-in and stores nothing.
-              </p>
+            <div className="mt-5 space-y-3 rounded-xl border border-border bg-surface p-5">
+              {stripeInfo ? (
+                <p className="flex items-center gap-2 text-[13px] text-teal">
+                  <Check className="h-4 w-4" /> Payment confirmed via Stripe — subscription active.
+                </p>
+              ) : (
+                <>
+                  <button
+                    onClick={startCheckout}
+                    disabled={payBusy}
+                    className="w-full rounded-lg bg-accent py-3 text-[14px] font-medium text-white hover:bg-accent-bright disabled:opacity-50"
+                  >
+                    {payBusy ? "Opening secure checkout…" : "Pay with Stripe — setup fee + monthly subscription"}
+                  </button>
+                  <p className="text-[11px] text-ink-faint">
+                    Secure hosted checkout by Stripe. You&apos;ll return here automatically after payment. Sandbox mode:
+                    use card 4242 4242 4242 4242, any future date, any CVC.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         ) : null}
