@@ -2,17 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { updateTenantSettings } from "@/app/dashboard/crm-actions";
 
-function Toggle({ label, desc, storageKey, defaultOn }: { label: string; desc: string; storageKey: string; defaultOn: boolean }) {
+function Toggle({
+  label,
+  desc,
+  storageKey,
+  defaultOn,
+  onFlip,
+}: {
+  label: string;
+  desc: string;
+  storageKey: string;
+  defaultOn: boolean;
+  onFlip?: (on: boolean) => void;
+}) {
   const [on, setOn] = useState(defaultOn);
   useEffect(() => {
+    if (onFlip) return; // live-backed toggles trust the server value
     const s = localStorage.getItem(storageKey);
     if (s !== null) setOn(s === "1");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
   const flip = () => {
     setOn((v) => {
-      localStorage.setItem(storageKey, v ? "0" : "1");
-      return !v;
+      const next = !v;
+      if (onFlip) onFlip(next);
+      else localStorage.setItem(storageKey, next ? "1" : "0");
+      return next;
     });
   };
   return (
@@ -33,12 +50,23 @@ function Toggle({ label, desc, storageKey, defaultOn }: { label: string; desc: s
   );
 }
 
-export function SettingsPanel() {
-  const [tier, setTier] = useState<"1" | "2">("2");
+export function SettingsPanel({
+  liveState,
+}: {
+  liveState?: { tier: 1 | 2; aiConcierge: boolean; pauseDrops: boolean } | null;
+}) {
+  const [tier, setTier] = useState<"1" | "2">(liveState ? String(liveState.tier) as "1" | "2" : "2");
+  const [saved, setSaved] = useState<string | null>(null);
   useEffect(() => {
+    if (liveState) return;
     const s = localStorage.getItem("df_tier");
     if (s === "1" || s === "2") setTier(s);
-  }, []);
+  }, [liveState]);
+
+  const flash = (msg: string) => {
+    setSaved(msg);
+    setTimeout(() => setSaved(null), 3000);
+  };
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -56,9 +84,15 @@ export function SettingsPanel() {
           <div className="relative">
             <select
               value={tier}
-              onChange={(e) => {
-                setTier(e.target.value as "1" | "2");
-                localStorage.setItem("df_tier", e.target.value);
+              onChange={async (e) => {
+                const next = e.target.value as "1" | "2";
+                setTier(next);
+                if (liveState) {
+                  await updateTenantSettings({ tier: Number(next) as 1 | 2 });
+                  flash("Tier updated — billing prorates on your next invoice");
+                } else {
+                  localStorage.setItem("df_tier", next);
+                }
               }}
               className="appearance-none rounded-lg border border-border bg-card py-2 pl-3 pr-9 text-[13px] outline-none"
             >
@@ -68,18 +102,35 @@ export function SettingsPanel() {
             <ChevronDown className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-ink-faint" />
           </div>
         </div>
+        {saved ? <p className="px-5 pb-2 text-[12px] text-teal">{saved}</p> : null}
         <div className="divide-y divide-border border-t border-border">
           <Toggle
             label="AI Outreach Concierge"
             desc="Tier 2 feature. Full call + email cadence automation. Toggling off leaves initial warm email + postcard only."
             storageKey="df_ai_concierge"
-            defaultOn
+            defaultOn={liveState ? liveState.aiConcierge : true}
+            onFlip={
+              liveState
+                ? async (on) => {
+                    await updateTenantSettings({ aiConcierge: on });
+                    flash(on ? "AI Concierge enabled" : "AI Concierge disabled — initial email + postcard only");
+                  }
+                : undefined
+            }
           />
           <Toggle
             label="Pause lead disbursements"
             desc="Skip the next 1–2 Tuesday drops. Your queue position is preserved."
             storageKey="df_pause_drops"
-            defaultOn={false}
+            defaultOn={liveState ? liveState.pauseDrops : false}
+            onFlip={
+              liveState
+                ? async (on) => {
+                    await updateTenantSettings({ pauseDrops: on });
+                    flash(on ? "Drops paused for 14 days" : "Drops resumed — you're in the next Tuesday run");
+                  }
+                : undefined
+            }
           />
         </div>
       </section>

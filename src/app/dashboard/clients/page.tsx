@@ -1,5 +1,6 @@
 import { Topbar } from "@/components/topbar";
 import { getClients } from "@/lib/data/crm";
+import { getLiveTenant, getLiveClients } from "@/lib/data/live";
 import { Upload, Download, UserPlus } from "lucide-react";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -8,11 +9,20 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   nurture: { label: "Nurture", cls: "bg-surface text-ink-dim ring-border" },
 };
 
-export default function ClientsPage() {
-  const clients = getClients();
+export default async function ClientsPage() {
+  const tenant = await getLiveTenant();
+  const liveClients = tenant ? await getLiveClients(tenant.tenantId) : null;
+  const clients = liveClients ?? getClients();
   return (
     <>
-      <Topbar title="My Clients" subtitle="Converted prospects and imported contacts. Closed deals archive here for later follow-up." />
+      <Topbar
+        title="My Clients"
+        subtitle={
+          liveClients
+            ? "Live: prospects you've booked or moved into the pipeline. CSV/API import lands next."
+            : "Converted prospects and imported contacts. Closed deals archive here for later follow-up."
+        }
+      />
       <main className="space-y-5 px-8 py-6">
         <div className="flex items-center gap-2">
           <button className="flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white hover:bg-accent-bright">

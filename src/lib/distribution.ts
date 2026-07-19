@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { warmIntroEmail } from "@/lib/outreach/email-templates";
-import { sendEmail, bookingLinkFor } from "@/lib/outreach/adapters";
+import { sendEmail, sendPostcard, bookingLinkFor } from "@/lib/outreach/adapters";
 import { applyMetaExplanations } from "@/lib/scoring/meta-explain";
 
 /**
@@ -151,5 +151,20 @@ export async function sendWarmEmail(assignmentId: string): Promise<boolean> {
     dncLink: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://dealflow.ai"}/dnc/${assignmentId}`,
   });
   const res = await sendEmail(biz.owner.email, email.subject, email.html);
+
+  // Day-1 USPS postcards (business + owner home). Requires a real street
+  // address — synthetic seed data has none, so live Lob spend only starts
+  // once real ingestion provides verified addresses.
+  const bizFull = payload?.business as
+    | { name?: string; streetAddress?: string; city?: string; state?: string; zip?: string; owner?: { name?: string } }
+    | undefined;
+  if (bizFull?.streetAddress && bizFull.city && bizFull.state && bizFull.zip) {
+    await sendPostcard({
+      toName: bizFull.owner?.name ?? bizFull.name ?? "Business Owner",
+      address: { line1: bizFull.streetAddress, city: bizFull.city, state: bizFull.state, zip: bizFull.zip },
+      templateId: process.env.LOB_TEMPLATE_ID ?? "tmpl_default",
+      qrUrl: bookingLinkFor(data.tenant_id),
+    });
+  }
   return res.ok;
 }

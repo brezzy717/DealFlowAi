@@ -1,6 +1,24 @@
 import { supabaseServer, supabaseConfigured } from "@/lib/supabase/server";
 import { supabaseAdmin, adminConfigured } from "@/lib/supabase/admin";
-import { LeadStatus, ScoredLead } from "@/lib/types";
+import { LeadStatus, ScoredLead, Tier } from "@/lib/types";
+import { Deal, PipelineStage, TaskItem, CallLog } from "@/lib/data/crm";
+
+type UiPayload = {
+  tier?: string;
+  business?: {
+    name?: string;
+    industry?: string;
+    city?: string;
+    state?: string;
+    revenueEstimate?: number;
+    owner?: { name?: string; email?: string; phone?: string };
+  };
+};
+
+const payloadOf = (sl: unknown): UiPayload | undefined => {
+  const row = Array.isArray(sl) ? sl[0] : sl;
+  return (row as { ui_payload?: UiPayload } | null)?.ui_payload;
+};
 
 /**
  * Live read path. Returns null when Supabase isn't configured, the visitor
@@ -68,6 +86,152 @@ export async function getLiveTenants(): Promise<LiveTenantRow[] | null> {
       lastActive: t.updated_at,
     };
   });
+}
+
+/** Live deals joined back to their lead payloads for display. */
+export async function getLiveDeals(tenantId: string): Promise<Deal[] | null> {
+  const admin = supabaseAdmin();
+  const { data } = await admin
+    .from("deals")
+    .select("id, stage, est_value, commission_pct, stage_entered_at, lead_assignments(scored_leads(ui_payload))")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: true });
+  if (!data?.length) return null;
+  return data.map((d) => {
+    const la = Array.isArray(d.lead_assignments) ? d.lead_assignments[0] : d.lead_assignments;
+    const p = payloadOf(la?.scored_leads);
+    return {
+      id: d.id,
+      business: p?.business?.name ?? "—",
+      ownerName: p?.business?.owner?.name ?? "—",
+      industry: p?.business?.industry ?? "—",
+      city: p?.business ? `${p.business.city}, ${p.business.state}` : "—",
+      estValue: Number(d.est_value ?? 0),
+      commissionPct: Number(d.commission_pct ?? 10),
+      stage: d.stage as PipelineStage,
+      daysInStage: Math.max(0, Math.floor((Date.now() - new Date(d.stage_entered_at).getTime()) / 86400000)),
+      tier: p?.tier ?? "gold",
+    };
+  });
+}
+
+/** Live tasks: rows from the tasks table + auto outreach-action items. */
+export async function getLiveTasks(tenantId: string): Promise<TaskItem[] | null> {
+  const admin = supabaseAdmin();
+  const [{ data: rows }, { data: pending }] = await Promise.all([
+    admin.from("tasks").select("id, title, kind, due_date, done").eq("tenant_id", tenantId).order("created_at"),
+    admin
+      .from("lead_assignments")
+      .select("id, scored_leads(ui_payload)")
+      .eq("tenant_id", tenantId)
+      .eq("status", "new"),
+  ]);
+  const auto: TaskItem[] = (pending ?? []).map((a) => ({
+    id: `auto_${a.id}`,
+    title: `Action outreach outcome — ${payloadOf(a.scored_leads)?.business?.name ?? "lead"}`,
+    kind: "action_outreach",
+    due: new Date().toISOString(),
+    done: false,
+    ref: a.id,
+  }));
+  const manual: TaskItem[] = (rows ?? []).map((t) => ({
+    id: t.id,
+    title: t.title,
+    kind: (t.kind ?? "todo") as TaskItem["kind"],
+    due: t.due_date ?? new Date().toISOString(),
+    done: Boolean(t.done),
+  }));
+  const all = [...auto, ...manual];
+  return all.length ? all : null;
+}
+
+export interface LiveReportStats {
+  assignedByTier: Record<string, number>;
+  convertedByTier: Record<string, number>;
+  appointments: number;
+  outcomes: Record<string, number>;
+  pipelineValue: number;
+  commissionsYtd: number;
+  dealsClosed: number;
+}
+
+export async function getLiveReportStats(tenantId: string): Promise<LiveReportStats | null> {
+  const admin = supabaseAdmin();
+  const [{ data: assigns }, { data: appts }, { data: fb }, { data: deals }, { data: df }] = await Promise.all([
+    admin.from("lead_assignments").select("status, scored_leads(tier)").eq("tenant_id", tenantId),
+    admin.from("appointments").select("id").eq("tenant_id", tenantId).neq("status", "cancelled"),
+    admin.from("outreach_feedback").select("outcome, lead_assignments!inner(tenant_id)").eq("lead_assignments.tenant_id", tenantId),
+    admin.from("deals").select("est_value, commission_pct, stage").eq("tenant_id", tenantId),
+    admin.from("deal_feedback").select("commission_amount, outcome, lead_assignments!inner(tenant_id)").eq("lead_assignments.tenant_id", tenantId),
+  ]);
+  if (!assigns?.length) return null;
+
+  const assignedByTier: Record<string, number> = {};
+  const convertedByTier: Record<string, number> = {};
+  for (const a of assigns) {
+    const tier = ((Array.isArray(a.scored_leads) ? a.scored_leads[0] : a.scored_leads) as { tier?: string } | null)?.tier ?? "?";
+    assignedByTier[tier] = (assignedByTier[tier] ?? 0) + 1;
+    if (a.status === "meeting_scheduled" || a.status === "in_pipeline") convertedByTier[tier] = (convertedByTier[tier] ?? 0) + 1;
+  }
+  const outcomes: Record<string, number> = {};
+  for (const f of fb ?? []) outcomes[f.outcome] = (outcomes[f.outcome] ?? 0) + 1;
+
+  return {
+    assignedByTier,
+    convertedByTier,
+    appointments: appts?.length ?? 0,
+    outcomes,
+    pipelineValue: (deals ?? []).filter((d) => d.stage !== "Funded & Closed").reduce((a, d) => a + Number(d.est_value ?? 0), 0),
+    commissionsYtd: (df ?? []).reduce((a, r) => a + Number(r.commission_amount ?? 0), 0),
+    dealsClosed: (df ?? []).filter((r) => r.outcome === "sold").length,
+  };
+}
+
+export async function getLiveCallLogs(tenantId: string): Promise<CallLog[] | null> {
+  const admin = supabaseAdmin();
+  const { data } = await admin
+    .from("call_logs")
+    .select("id, called_at, duration_sec, attempt, outcome, transcript, lead_assignments(scored_leads(ui_payload))")
+    .eq("tenant_id", tenantId)
+    .order("called_at", { ascending: false })
+    .limit(25);
+  if (!data?.length) return null;
+  return data.map((c) => {
+    const la = Array.isArray(c.lead_assignments) ? c.lead_assignments[0] : c.lead_assignments;
+    const p = payloadOf(la?.scored_leads);
+    return {
+      id: c.id,
+      leadName: p?.business?.name ?? "—",
+      ownerName: p?.business?.owner?.name ?? "—",
+      when: c.called_at,
+      durationSec: c.duration_sec ?? 0,
+      attempt: c.attempt ?? 1,
+      outcome: (c.outcome ?? "pending_action") as CallLog["outcome"],
+      transcriptSnippet: c.transcript ?? "Recording/transcript attach when the call completes.",
+    };
+  });
+}
+
+export interface LivePoolStats {
+  byTier: Record<Tier, { total: number; unassigned: number }>;
+  histogram: { label: string; value: number }[];
+}
+
+export async function getLivePoolStats(): Promise<LivePoolStats | null> {
+  if (!adminConfigured()) return null;
+  const admin = supabaseAdmin();
+  const { data } = await admin.from("scored_leads").select("tier, final_score, lead_assignments!left(id)");
+  if (!data?.length) return null;
+  const byTier = { platinum: { total: 0, unassigned: 0 }, gold: { total: 0, unassigned: 0 }, silver: { total: 0, unassigned: 0 }, black: { total: 0, unassigned: 0 } } as LivePoolStats["byTier"];
+  const histogram = Array.from({ length: 10 }, (_, i) => ({ label: `${i * 10}`, value: 0 }));
+  for (const r of data) {
+    const t = r.tier as Tier;
+    byTier[t].total++;
+    const assigned = Array.isArray(r.lead_assignments) ? r.lead_assignments.length > 0 : Boolean(r.lead_assignments);
+    if (!assigned) byTier[t].unassigned++;
+    histogram[Math.min(9, Math.floor(Number(r.final_score) / 10))].value++;
+  }
+  return { byTier, histogram };
 }
 
 export interface LiveClient {

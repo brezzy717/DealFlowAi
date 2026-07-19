@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { TaskItem } from "@/lib/data/crm";
+import { addTask, setTaskDone, removeTask } from "@/app/dashboard/crm-actions";
 import { CheckCircle2, Circle, Plus, PhoneCall, FileText, Bell, ListTodo, Trash2 } from "lucide-react";
 
 const KIND_ICON = { action_outreach: PhoneCall, document: FileText, reminder: Bell, todo: ListTodo };
 const KIND_LABEL = { action_outreach: "Action outreach", document: "Document", reminder: "Reminder", todo: "To-do" };
 
-export function TaskList({ initial }: { initial: TaskItem[] }) {
+export function TaskList({ initial, live = false }: { initial: TaskItem[]; live?: boolean }) {
   const [tasks, setTasks] = useState<TaskItem[]>(initial);
   const [draft, setDraft] = useState("");
 
   useEffect(() => {
+    if (live) return;
     const saved = localStorage.getItem("df_tasks");
     if (saved) {
       const overrides: { added: TaskItem[]; done: string[]; removed: string[] } = JSON.parse(saved);
@@ -20,30 +22,43 @@ export function TaskList({ initial }: { initial: TaskItem[] }) {
         ...overrides.added,
       ]);
     }
-  }, []);
+  }, [live]);
 
   const persist = (next: TaskItem[]) => {
-    const initialIds = new Set(initial.map((t) => t.id));
-    localStorage.setItem(
-      "df_tasks",
-      JSON.stringify({
-        added: next.filter((t) => !initialIds.has(t.id)),
-        done: next.filter((t) => t.done && initialIds.has(t.id)).map((t) => t.id),
-        removed: initial.filter((t) => !next.some((n) => n.id === t.id)).map((t) => t.id),
-      }),
-    );
+    if (!live) {
+      const initialIds = new Set(initial.map((t) => t.id));
+      localStorage.setItem(
+        "df_tasks",
+        JSON.stringify({
+          added: next.filter((t) => !initialIds.has(t.id)),
+          done: next.filter((t) => t.done && initialIds.has(t.id)).map((t) => t.id),
+          removed: initial.filter((t) => !next.some((n) => n.id === t.id)).map((t) => t.id),
+        }),
+      );
+    }
     setTasks(next);
   };
 
-  const toggle = (id: string) => persist(tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
-  const remove = (id: string) => persist(tasks.filter((t) => t.id !== id));
-  const add = () => {
+  const toggle = (id: string) => {
+    const t = tasks.find((x) => x.id === id);
+    persist(tasks.map((x) => (x.id === id ? { ...x, done: !x.done } : x)));
+    // Auto outreach tasks resolve via the Action buttons on the lead, not here
+    if (live && t && !id.startsWith("auto_")) setTaskDone(id, !t.done);
+  };
+  const remove = (id: string) => {
+    persist(tasks.filter((t) => t.id !== id));
+    if (live && !id.startsWith("auto_")) removeTask(id);
+  };
+  const add = async () => {
     if (!draft.trim()) return;
-    persist([
-      ...tasks,
-      { id: `t_${Date.now()}`, title: draft.trim(), kind: "todo", due: new Date().toISOString(), done: false },
-    ]);
+    const title = draft.trim();
     setDraft("");
+    if (live) {
+      const res = await addTask(title);
+      persist([...tasks, { id: res.id ?? `t_${Date.now()}`, title, kind: "todo", due: new Date().toISOString(), done: false }]);
+    } else {
+      persist([...tasks, { id: `t_${Date.now()}`, title, kind: "todo", due: new Date().toISOString(), done: false }]);
+    }
   };
 
   const open = tasks.filter((t) => !t.done);

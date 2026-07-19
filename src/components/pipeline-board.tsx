@@ -2,28 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { Deal, PIPELINE_STAGES, PipelineStage } from "@/lib/data/crm";
+import { moveDealStage } from "@/app/dashboard/crm-actions";
 import { GripVertical } from "lucide-react";
 
 const fmtMoney = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : `$${(n / 1_000).toFixed(0)}K`);
 
-export function PipelineBoard({ initial }: { initial: Deal[] }) {
+export function PipelineBoard({ initial, live = false }: { initial: Deal[]; live?: boolean }) {
   const [deals, setDeals] = useState<Deal[]>(initial);
   const [dragId, setDragId] = useState<string | null>(null);
 
-  // Persist stage moves locally until Supabase lands (Phase-1b data layer swap)
+  // Demo mode persists locally; live mode persists to the deals table
   useEffect(() => {
+    if (live) return;
     const saved = localStorage.getItem("df_pipeline_stages");
     if (saved) {
       const map: Record<string, PipelineStage> = JSON.parse(saved);
       setDeals((ds) => ds.map((d) => (map[d.id] ? { ...d, stage: map[d.id] } : d)));
     }
-  }, []);
+  }, [live]);
 
   const moveDeal = (id: string, stage: PipelineStage) => {
     setDeals((ds) => {
       const next = ds.map((d) => (d.id === id ? { ...d, stage, daysInStage: 0 } : d));
-      const map = Object.fromEntries(next.map((d) => [d.id, d.stage]));
-      localStorage.setItem("df_pipeline_stages", JSON.stringify(map));
+      if (live) {
+        moveDealStage(id, stage); // fire-and-forget; optimistic UI
+      } else {
+        const map = Object.fromEntries(next.map((d) => [d.id, d.stage]));
+        localStorage.setItem("df_pipeline_stages", JSON.stringify(map));
+      }
       return next;
     });
   };

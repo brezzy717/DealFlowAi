@@ -223,7 +223,8 @@ function ProspectDetail({ lead, internals = false }: { lead: ScoredLead; interna
         <div className="space-y-2">
           <ActionOutcome assignmentId={lead.assignmentId} />
           <div className="flex flex-wrap gap-2">
-            {["Send Email", "Move to Pipeline", "Open Deal Room"].map((a) => (
+            <MoveToPipeline assignmentId={lead.assignmentId} />
+            {["Send Email", "Open Deal Room"].map((a) => (
               <button
                 key={a}
                 className="rounded-md border border-border bg-card px-3 py-1.5 text-[12px] text-ink-dim transition hover:border-accent/40 hover:text-ink"
@@ -235,6 +236,34 @@ function ProspectDetail({ lead, internals = false }: { lead: ScoredLead; interna
         </div>
       </div>
     </div>
+  );
+}
+
+function MoveToPipeline({ assignmentId }: { assignmentId?: string }) {
+  const [state, setState] = useState<"idle" | "busy" | "done">("idle");
+  if (!assignmentId) {
+    return (
+      <button disabled className="rounded-md border border-border bg-card px-3 py-1.5 text-[12px] text-ink-faint opacity-60">
+        Move to Pipeline
+      </button>
+    );
+  }
+  if (state === "done") {
+    return <span className="rounded-md bg-teal-soft px-3 py-1.5 text-[12px] font-medium text-teal ring-1 ring-teal/30">In pipeline ✓</span>;
+  }
+  return (
+    <button
+      onClick={async () => {
+        setState("busy");
+        const { createDealFromAssignment } = await import("@/app/dashboard/crm-actions");
+        const res = await createDealFromAssignment(assignmentId);
+        setState(res.ok ? "done" : "idle");
+      }}
+      disabled={state === "busy"}
+      className="rounded-md border border-border bg-card px-3 py-1.5 text-[12px] text-ink-dim transition hover:border-accent/40 hover:text-ink disabled:opacity-50"
+    >
+      {state === "busy" ? "Moving…" : "Move to Pipeline"}
+    </button>
   );
 }
 

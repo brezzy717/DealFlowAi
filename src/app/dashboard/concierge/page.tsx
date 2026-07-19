@@ -1,5 +1,6 @@
 import { Topbar } from "@/components/topbar";
 import { getCallLogs } from "@/lib/data/crm";
+import { getLiveTenant, getLiveCallLogs } from "@/lib/data/live";
 import { ScriptEditor } from "@/components/script-editor";
 import { Mail, Phone, MailOpen, Send, PauseCircle, PlayCircle, Headphones, FileDown } from "lucide-react";
 
@@ -22,8 +23,10 @@ const CADENCE = [
   { day: "Day 44", what: "Full cycle repeats until booked or DNC (lead stays yours for life)", icon: PlayCircle },
 ] as const;
 
-export default function ConciergePage() {
-  const logs = getCallLogs();
+export default async function ConciergePage() {
+  const tenant = await getLiveTenant();
+  const liveLogs = tenant ? await getLiveCallLogs(tenant.tenantId) : null;
+  const logs = liveLogs ?? getCallLogs();
   return (
     <>
       <Topbar

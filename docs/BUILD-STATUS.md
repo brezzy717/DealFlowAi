@@ -9,7 +9,7 @@ Snapshot of what's live, what's demo-mode, and what's left. Updated 2026-07-07.
 - **Resend**: verified domain updates.dealflowtech.io (emails reach real addresses)
 - **Anthropic**: Ava live
 - **Inngest**: connected to Vercel (crons run on deploy sync)
-- **Retell**: number + agent id + LLM id wired into cadence w/ call_logs — BLOCKED: API key rejected by Retell (need the full key, starts with key_)
+- **Retell**: VERIFIED — key valid, agent "Lead Qualification" live, number + LLM id wired into cadence w/ call_logs
 
 ## Working end-to-end (verified against live DB)
 | Flow | Status |
@@ -33,19 +33,15 @@ Snapshot of what's live, what's demo-mode, and what's left. Updated 2026-07-07.
 | Real clawback + audit trail | ✅ live, verified |
 | Proprietary lockdown on broker lead cards | ✅ done |
 
-## Demo-mode (works, not yet wired to live tables)
-- Pipeline (Kanban) — drag/drop persists to localStorage; needs deals-table persistence
-- Clients page — synthetic list (getLiveClients exists, page not yet swapped)
-- Task Manager — localStorage; could pull live needs-action
-- Reports — synthetic metrics; needs aggregation queries
-- Admin dashboard — synthetic tenants list; pool/drift panels illustrative
-- Document Vault — static list; needs Supabase Storage
-- Concierge call log — synthetic; real logs land when Retell agent runs
+## Demo-mode fallbacks only (all tabs live for signed-in brokers)
+- Every dashboard tab now reads/writes live tables; synthetic data renders only for signed-out visitors.
+- Reports leaderboard + zip activity still illustrative (needs cross-tenant aggregation policy decision)
+- Concierge script editor saves locally (needs per-tenant script storage — trivial add)
 
 ## Not started
 - Real data ingestion (Dewey/UniCourt/ATTOM/D&B/Google/scrapers) — Phase 4
 - ML ensemble training (service skeleton exists; needs labels + hosting)
-- USPS postcards (Lob adapter ready; needs LOB_API_KEY)
+- USPS postcards: LIVE key wired into Day-1 drop flow; sends automatically once leads have real street addresses (synthetic seeds have none — no accidental spend)
 - Google Calendar sync option
 
 ## Test account

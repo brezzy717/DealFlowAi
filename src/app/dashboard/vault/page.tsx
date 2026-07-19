@@ -1,9 +1,32 @@
 import { Topbar } from "@/components/topbar";
-import { getVaultDocs } from "@/lib/data/crm";
-import { FileText, Upload, Paperclip } from "lucide-react";
+import { getVaultDocs, VaultDoc } from "@/lib/data/crm";
+import { getLiveTenant } from "@/lib/data/live";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { VaultUploader, VaultDownload } from "@/components/vault-uploader";
+import { FileText, Paperclip } from "lucide-react";
 
-export default function VaultPage() {
-  const docs = getVaultDocs();
+export default async function VaultPage() {
+  const tenant = await getLiveTenant();
+  let uploaded: VaultDoc[] = [];
+  if (tenant) {
+    const admin = supabaseAdmin();
+    const { data } = await admin
+      .from("vault_documents")
+      .select("id, name, mime_type, size_kb, updated_at, builtin, attached_to_outreach")
+      .eq("tenant_id", tenant.tenantId)
+      .order("updated_at", { ascending: false });
+    uploaded = (data ?? []).map((d) => ({
+      id: d.id,
+      name: d.name,
+      type: d.mime_type?.split("/")[1]?.toUpperCase() ?? "FILE",
+      sizeKb: d.size_kb ?? 0,
+      updatedAt: new Date(d.updated_at).toISOString().slice(0, 10),
+      builtin: Boolean(d.builtin),
+      attachedToOutreach: Boolean(d.attached_to_outreach),
+    }));
+  }
+  const docs = [...uploaded, ...getVaultDocs()];
+
   return (
     <>
       <Topbar
@@ -12,11 +35,13 @@ export default function VaultPage() {
       />
       <main className="space-y-5 px-8 py-6">
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-[13px] font-medium text-white hover:bg-accent-bright">
-            <Upload className="h-4 w-4" /> Upload document
-          </button>
+          {tenant ? (
+            <VaultUploader />
+          ) : (
+            <p className="text-[13px] text-ink-dim">Sign in to upload your own documents.</p>
+          )}
           <p className="ml-auto text-[12px] text-ink-faint">
-            Storage backed by Supabase Storage on connect · all docs importable/exportable
+            Private Supabase Storage · uploads live in your tenant folder only
           </p>
         </div>
 
@@ -39,11 +64,16 @@ export default function VaultPage() {
                 {d.builtin ? " · platform template" : ""}
               </p>
               <div className="mt-3 flex gap-1.5">
-                {["Edit", "Attach", "Download"].map((a) => (
-                  <button key={a} className="rounded border border-border bg-surface px-2.5 py-1 text-[11px] text-ink-dim hover:border-accent/40 hover:text-ink">
-                    {a}
+                {!d.builtin && tenant ? (
+                  <VaultDownload docId={d.id} />
+                ) : (
+                  <button className="rounded border border-border bg-surface px-2.5 py-1 text-[11px] text-ink-dim hover:border-accent/40 hover:text-ink">
+                    Download
                   </button>
-                ))}
+                )}
+                <button className="rounded border border-border bg-surface px-2.5 py-1 text-[11px] text-ink-dim hover:border-accent/40 hover:text-ink">
+                  Attach
+                </button>
               </div>
             </div>
           ))}

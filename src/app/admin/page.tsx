@@ -4,7 +4,7 @@ import { KpiCard } from "@/components/kpi-card";
 import { BarChart } from "@/components/charts";
 import { ADMIN_KPIS, SOURCE_FRESHNESS, getTenants } from "@/lib/data/crm";
 import { getScoredLeads } from "@/lib/data/store";
-import { getLiveTenants } from "@/lib/data/live";
+import { getLiveTenants, getLivePoolStats } from "@/lib/data/live";
 import { Users, DollarSign, Send, Target, ShieldCheck, ArrowLeft } from "lucide-react";
 
 const FRESH_CLS: Record<string, string> = {
@@ -14,14 +14,28 @@ const FRESH_CLS: Record<string, string> = {
 };
 
 export default async function AdminPage() {
-  const liveTenants = await getLiveTenants();
+  const [liveTenants, pool] = await Promise.all([getLiveTenants(), getLivePoolStats()]);
   const tenants = liveTenants ?? getTenants();
-  // Score distribution histogram for drift monitoring
-  const all = getScoredLeads();
-  const buckets = Array.from({ length: 10 }, (_, i) => ({
-    label: `${i * 10}`,
-    value: all.filter((l) => l.score >= i * 10 && l.score < (i + 1) * 10).length,
-  }));
+  // Score distribution histogram for drift monitoring — live pool when available
+  const buckets =
+    pool?.histogram ??
+    Array.from({ length: 10 }, (_, i) => ({
+      label: `${i * 10}`,
+      value: getScoredLeads().filter((l) => l.score >= i * 10 && l.score < (i + 1) * 10).length,
+    }));
+  const poolCards = pool
+    ? [
+        ["Platinum", `${pool.byTier.platinum.unassigned}`, `of ${pool.byTier.platinum.total} total`, "text-platinum"],
+        ["Gold", `${pool.byTier.gold.unassigned}`, `of ${pool.byTier.gold.total} total`, "text-gold"],
+        ["Silver", `${pool.byTier.silver.unassigned}`, `of ${pool.byTier.silver.total} total`, "text-silver"],
+        ["Black (monitor)", `${pool.byTier.black.total}`, "never distributed", "text-ink-faint"],
+      ]
+    : [
+        ["Platinum", ADMIN_KPIS.poolPlatinum.toLocaleString(), "", "text-platinum"],
+        ["Gold", ADMIN_KPIS.poolGold.toLocaleString(), "", "text-gold"],
+        ["Silver", ADMIN_KPIS.poolSilver.toLocaleString(), "", "text-silver"],
+        ["Black (monitor)", "37.9M", "", "text-ink-faint"],
+      ];
 
   return (
     <div className="min-h-screen">
@@ -46,26 +60,24 @@ export default async function AdminPage() {
         <div className="grid gap-6 xl:grid-cols-2">
           <section className="card p-5">
             <h2 className="font-display text-xl font-medium">Lead Pool by Tier</h2>
-            <p className="mt-1 text-[12px] text-ink-faint">Distributable inventory vs. the Black monitor pool</p>
+            <p className="mt-1 text-[12px] text-ink-faint">
+              {pool ? "Live pool — unassigned (distributable) inventory" : "Distributable inventory vs. the Black monitor pool"}
+            </p>
             <div className="mt-4 grid grid-cols-4 gap-3 text-center">
-              {[
-                ["Platinum", ADMIN_KPIS.poolPlatinum, "text-platinum"],
-                ["Gold", ADMIN_KPIS.poolGold, "text-gold"],
-                ["Silver", ADMIN_KPIS.poolSilver, "text-silver"],
-                ["Black (monitor)", ADMIN_KPIS.poolBlack, "text-ink-faint"],
-              ].map(([label, val, cls]) => (
-                <div key={label as string} className="rounded-lg bg-surface px-2 py-3 ring-1 ring-border">
-                  <p className={`font-display text-2xl font-medium tabular-nums ${cls}`}>
-                    {(val as number) >= 1_000_000 ? `${((val as number) / 1_000_000).toFixed(1)}M` : (val as number).toLocaleString()}
-                  </p>
+              {poolCards.map(([label, val, sub, cls]) => (
+                <div key={label} className="rounded-lg bg-surface px-2 py-3 ring-1 ring-border">
+                  <p className={`font-display text-2xl font-medium tabular-nums ${cls}`}>{val}</p>
                   <p className="mt-1 text-[11px] text-ink-faint">{label}</p>
+                  {sub ? <p className="text-[10px] text-ink-faint">{sub}</p> : null}
                 </div>
               ))}
             </div>
             <h3 className="mt-6 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-wider text-ink-faint">
               <ShieldCheck className="h-4 w-4" /> Score distribution (drift monitor)
             </h3>
-            <p className="mt-1 text-[12px] text-ink-faint">Demo book sample · PSI vs. baseline: 0.04 (healthy, alert at 0.2)</p>
+            <p className="mt-1 text-[12px] text-ink-faint">
+              {pool ? "Live scored pool · PSI monitoring starts with real ingestion" : "Demo book sample · PSI vs. baseline: 0.04 (healthy, alert at 0.2)"}
+            </p>
             <div className="mt-2">
               <BarChart data={buckets} height={140} />
             </div>

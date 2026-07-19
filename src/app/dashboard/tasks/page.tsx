@@ -1,9 +1,12 @@
 import { Topbar } from "@/components/topbar";
 import { TaskList } from "@/components/task-list";
 import { getTasks } from "@/lib/data/crm";
+import { getLiveTenant, getLiveTasks } from "@/lib/data/live";
 
-export default function TasksPage() {
-  const tasks = getTasks();
+export default async function TasksPage() {
+  const tenant = await getLiveTenant();
+  const liveTasks = tenant ? await getLiveTasks(tenant.tenantId) : null;
+  const tasks = liveTasks ?? getTasks();
   const outstanding = tasks.filter((t) => t.kind === "action_outreach" && !t.done).length;
   return (
     <>
@@ -12,7 +15,7 @@ export default function TasksPage() {
         subtitle={`${outstanding} outreach outcomes still need actioning — these train the scoring model.`}
       />
       <main className="mx-auto max-w-3xl px-8 py-6">
-        <TaskList initial={tasks} />
+        <TaskList initial={tasks} live={Boolean(liveTasks)} />
       </main>
     </>
   );
